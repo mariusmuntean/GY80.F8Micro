@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Meadow.Foundation.Sensors;
 using Meadow.Foundation.Spatial;
 using Meadow.Hardware;
@@ -8,7 +9,6 @@ namespace GY80
 {
     public class HMC5883L
     {
-        private int _updateInterval;
         private byte CRA = 0x10;
         private byte CRB = 0x20;
         private byte MR = 0x02;
@@ -162,13 +162,33 @@ namespace GY80
         /// </summary>
         public event SensorVectorEventHandler FieldStrengthChanged = delegate { };
 
+        Task _internalPollingTask;
+        CancellationTokenSource _cts = new CancellationTokenSource();
+
+        public void StopInternalPolling()
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
+        }
+
         public void StartInternalPolling(TimeSpan pollingPeriod)
         {
-            _updateInterval = (int)pollingPeriod.TotalMilliseconds;
-
-            Thread t = new Thread(() =>
+            // Sanitize input
+            if (pollingPeriod < TimeSpan.FromMilliseconds(7))
             {
-                while (true)
+                throw new ArgumentException("Cannot poll faster than ~160Hz");
+            }
+
+            // Stop any previous polling task - we don't want multiple tasks polling in parallel
+            StopInternalPolling();
+
+            _cts = new CancellationTokenSource();
+
+            Task.Run(async () =>
+            {
+                var cancellationToken = _cts.Token;
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     var newestValues = Read();
                     //Console.WriteLine($"Newest: {newestValues.X} {newestValues.Y} {newestValues.Z}");
@@ -185,10 +205,9 @@ namespace GY80
                         _lastZ = _currentZ;
                     }
 
-                    Thread.Sleep(_updateInterval);
+                    await Task.Delay(pollingPeriod);
                 }
             });
-            t.Start();
         }
     }
 }

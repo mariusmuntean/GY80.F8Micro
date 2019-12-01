@@ -2,16 +2,11 @@
 using System.Threading;
 using Meadow;
 using Meadow.Devices;
-using Meadow.Hardware;
 
 namespace GY80
 {
     public class GY80 : App<F7Micro, GY80>
     {
-        IDigitalOutputPort redLed;
-        IDigitalOutputPort blueLed;
-        IDigitalOutputPort greenLed;
-
         public GY80()
         {
             Console.WriteLine("\n\n");
@@ -29,12 +24,20 @@ namespace GY80
             };
 
             hmc5883l.StartInternalPolling(TimeSpan.FromMilliseconds(200));
+            Console.WriteLine("Running first time");
+            Thread.Sleep(1000);
+
+            Console.WriteLine("Stopping");
+            hmc5883l.StopInternalPolling();
+            Console.WriteLine("Waiting one second");
+            Thread.Sleep(1000);
+
+            Console.WriteLine("Continuing");
+            hmc5883l.StartInternalPolling(TimeSpan.FromMilliseconds(200));
 
             // Put Meadow to sleep as the interrupt handler will deal 
             // with changes in orientation.
             Thread.Sleep(Timeout.Infinite);
         }
-
-
     }
 }
