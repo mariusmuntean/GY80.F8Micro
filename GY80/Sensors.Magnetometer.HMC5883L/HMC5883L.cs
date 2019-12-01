@@ -6,9 +6,16 @@ using Meadow.Foundation.Sensors;
 using Meadow.Foundation.Spatial;
 using Meadow.Hardware;
 
-namespace GY80
+namespace GY80.Sensors.Magnetometer.HMC5883L
 {
-    public class HMC5883L
+    /// <summary>
+    /// Honeywell 3-Axis Digital Compass ICHMC5883L
+    /// 
+    /// <para>
+    ///     Datasheet: https://cdn-shop.adafruit.com/datasheets/HMC5883L_3-Axis_Digital_Compass_IC.pdf
+    /// </para>
+    /// </summary>
+    public partial class HMC5883L
     {
         private byte CRA = 0x10;
         private byte CRB = 0x20;
@@ -21,12 +28,12 @@ namespace GY80
         private byte DZRA = 0x07;
         private byte DZRB = 0x08;
 
-        private float _lastX = 0.0f;
-        private float _lastZ = 0.0f;
-        private float _lastY = 0.0f;
+        private float _lastX, _lastY, _lastZ = 0.0f;
         private float _currentX, _currentY, _currentZ = 0.0f;
-        private float Threshold = float.Epsilon;
 
+        /// <summary>
+        /// See datasheet page 13
+        /// </summary>
         private Dictionary<GainConfiguration, float> _gainToDividingFactorMap = new Dictionary<GainConfiguration, float>()
         {
             {GainConfiguration._0_88 , 1370.0f},
@@ -40,75 +47,7 @@ namespace GY80
         };
 
         II2cPeripheral _device;
-        Task _internalPollingTask;
         CancellationTokenSource _cts;
-
-        public enum SamplesToAverage
-        {
-            One = 0b00000000,
-            Two = 0b00100000,
-            Four = 0b01000000,
-            Eight = 0b01100000
-        }
-
-        public enum DataOutputRate
-        {
-            _0_75Hz = 0b000_000_00,
-            _1_5Hz = 0b000_001_00,
-            _3Hz = 0b000_010_00,
-            _7_5Hz = 0b000_011_00,
-            _15Hz = 0b000_100_00,
-            _30Hz = 0b000_101_00,
-            _75Hz = 0b000_110_00,
-        }
-
-        public enum MeasurementMode
-        {
-            /// <summary>
-            /// Normal measurement configuration (Default).  In normal measurement configuration the device follows normal measurement flow.  The positive and negative pins of the resistive loadare left floating and high impedance.
-            /// </summary>
-            Normal = 0b000000_00,
-
-            /// <summary>
-            /// Positive bias configurationfor X, Y,and Zaxes.In thisconfiguration, a positive currentis forced across the resistive load for all threeaxes.
-            /// </summary>
-            PositiveBias = 0b000000_01,
-
-            /// <summary>
-            /// Negative bias configurationfor X, Yand Zaxes.In thisconfiguration, a negative currentis forced across the resistive load for all threeaxes.
-            /// </summary>
-            NegativeBias = 0b000000_10
-        }
-
-        public enum GainConfiguration
-        {
-            _0_88 = 0b000_00000,
-            _1_30 = 0b001_00000,
-            _1_90 = 0b010_00000,
-            _2_50 = 0b011_00000,
-            _4_00 = 0b100_00000,
-            _4_70 = 0b101_00000,
-            _5_60 = 0b110_00000,
-            _8_10 = 0b111_00000,
-        }
-
-        public enum OperatingMode
-        {
-            /// <summary>
-            /// Continuous-MeasurementMode. In continuous-measurementmode, the device continuously performs measurements andplaces the result in the data register.  RDY goes high when new data is placed in all three registers.  After a power-on or a write to the mode or configuration register, the first measurement set is available from all three data output registers after a period of 2/fDOand subsequent measurements are available at a frequency of fDO, where fDOis the frequency of data output.
-            /// </summary>
-            ContinuousMeasurement = 0b000000_00,
-
-            /// <summary>
-            /// Single-MeasurementMode(Default). When single-measurementmode is selected, device performs a single measurement, sets RDY high and returned to idle mode.  Mode register returns to idle mode bit values.  The measurement remains in the data output register and RDY remains high until the data output register is read or another measurementis performed.
-            /// </summary>
-            SingleMeasurement = 0b000000_01,
-
-            /// <summary>
-            /// Idle Mode.  Device is placed in idle mode.
-            /// </summary>
-            Idle = 0b000000_10,
-        }
 
         public HMC5883L(II2cBus i2CBus,
             byte address = 0x1E,
@@ -148,8 +87,19 @@ namespace GY80
             Console.WriteLine($"MR: {Convert.ToString(modeRegisterData, 2).PadLeft(8, '0')}");
         }
 
+        /// <summary>
+        /// Threshold for the difference between old and new readings during internal polling.
+        /// </summary>
+        public float Threshold { get; set; } = float.Epsilon;
+
+        /// <summary>
+        /// The current operating mode.
+        /// </summary>
         public OperatingMode Mode { get; private set; }
 
+        /// <summary>
+        /// The currently chosen gain
+        /// </summary>
         public GainConfiguration Gain { get; private set; }
 
         /// <summary>
@@ -178,16 +128,15 @@ namespace GY80
 
         /// <summary>
         ///     Event to be raised when the magnetic field change is greater than +/- Threshold.
+        ///
+        /// <para> Make sure to start the internal polling after you register a handler. </para>
         /// </summary>
         public event SensorVectorEventHandler FieldStrengthChanged = delegate { };
 
-        public void StopInternalPolling()
-        {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _cts = null;
-        }
-
+        /// <summary>
+        /// Updates the sensor output with the specified period. Invokes any registered <see cref="SensorVectorEventHandler"/>
+        /// </summary>
+        /// <param name="pollingPeriod">The time to wait between consecutive data updates</param>
         public void StartInternalPolling(TimeSpan pollingPeriod)
         {
             // Sanitize input
@@ -224,6 +173,16 @@ namespace GY80
                     await Task.Delay(pollingPeriod);
                 }
             });
+        }
+
+        /// <summary>
+        /// Stops internal polling, if running.
+        /// </summary>
+        public void StopInternalPolling()
+        {
+            _cts?.Cancel();
+            _cts?.Dispose();
+            _cts = null;
         }
 
         private float ToGauss(short rawSensorOutput)

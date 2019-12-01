@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading;
+using GY80.Sensors.Magnetometer.HMC5883L;
 using Meadow;
 using Meadow.Devices;
 
@@ -18,9 +19,7 @@ namespace GY80
             // Attach an interrupt handler.            
             hmc5883l.FieldStrengthChanged += (s, e) =>
             {
-                Console.WriteLine("X: " + e.CurrentValue.X.ToString() +
-                            ", Y: " + e.CurrentValue.Y.ToString() +
-                            ", Z: " + e.CurrentValue.Z.ToString());
+                Console.WriteLine($"X: {e.CurrentValue.X}, Y: {e.CurrentValue.Y}, Z: {e.CurrentValue.Z}");
             };
 
             hmc5883l.StartInternalPolling(TimeSpan.FromMilliseconds(200));
