@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Meadow.Foundation.Sensors;
@@ -20,13 +21,27 @@ namespace GY80
         private byte DZRA = 0x07;
         private byte DZRB = 0x08;
 
+        private float _lastX = 0.0f;
+        private float _lastZ = 0.0f;
+        private float _lastY = 0.0f;
+        private float _currentX, _currentY, _currentZ = 0.0f;
+        private float Threshold = float.Epsilon;
+
+        private Dictionary<GainConfiguration, float> _gainToDividingFactorMap = new Dictionary<GainConfiguration, float>()
+        {
+            {GainConfiguration._0_88 , 1370.0f},
+            {GainConfiguration._1_30 , 1090.0f},
+            {GainConfiguration._1_90 , 820.0f},
+            {GainConfiguration._2_50 , 660.0f},
+            {GainConfiguration._4_00 , 440.0f},
+            {GainConfiguration._4_70 , 390.0f},
+            {GainConfiguration._5_60 , 330.0f},
+            {GainConfiguration._8_10 , 230.0f}
+        };
 
         II2cPeripheral _device;
-        private short _lastX = 0;
-        private short _lastZ = 0;
-        private short _lastY = 0;
-        private short _currentX, _currentY, _currentZ = 0;
-        private float Threshold = 0.1f;
+        Task _internalPollingTask;
+        CancellationTokenSource _cts;
 
         public enum SamplesToAverage
         {
@@ -108,6 +123,7 @@ namespace GY80
         {
 
             Mode = operatingMode;
+            Gain = gainConfiguration;
 
             _device = new I2cPeripheral(i2CBus, address);
 
@@ -134,6 +150,8 @@ namespace GY80
 
         public OperatingMode Mode { get; private set; }
 
+        public GainConfiguration Gain { get; private set; }
+
         /// <summary>
         /// Reads the current values of the magnetic field strength
         /// </summary>
@@ -149,10 +167,11 @@ namespace GY80
                 Thread.Sleep(7);
             }
 
+            // Read raw sensor data and convert it to Gauss
             var data = _device.ReadRegisters(DXRA, 6);
-            _currentX = (short)((data[0] << 8) + data[1]);
-            _currentY = (short)((data[2] << 8) + data[3]);
-            _currentZ = (short)((data[4] << 8) + data[5]);
+            _currentX = ToGauss((short)((data[0] << 8) + data[1]));
+            _currentY = ToGauss((short)((data[2] << 8) + data[3]));
+            _currentZ = ToGauss((short)((data[4] << 8) + data[5]));
 
             return new Vector(_currentX, _currentY, _currentZ);
         }
@@ -161,9 +180,6 @@ namespace GY80
         ///     Event to be raised when the magnetic field change is greater than +/- Threshold.
         /// </summary>
         public event SensorVectorEventHandler FieldStrengthChanged = delegate { };
-
-        Task _internalPollingTask;
-        CancellationTokenSource _cts = new CancellationTokenSource();
 
         public void StopInternalPolling()
         {
@@ -208,6 +224,13 @@ namespace GY80
                     await Task.Delay(pollingPeriod);
                 }
             });
+        }
+
+        private float ToGauss(short rawSensorOutput)
+        {
+            var dividingFactor = _gainToDividingFactorMap[Gain];
+
+            return rawSensorOutput / dividingFactor;
         }
     }
 }
