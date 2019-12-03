@@ -9,5 +9,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Sensors.Magnetometer.HMC5883L\" />
+    <Folder Include="Sensors.Gyro.L3G4200\" />
   </ItemGroup>
 </Project>

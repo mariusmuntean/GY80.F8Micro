@@ -15,7 +15,7 @@ namespace GY80.Sensors.Magnetometer.HMC5883L
     ///     Datasheet: https://cdn-shop.adafruit.com/datasheets/HMC5883L_3-Axis_Digital_Compass_IC.pdf
     /// </para>
     /// </summary>
-    public partial class HMC5883L
+    public class HMC5883L
     {
         private byte CRA = 0x10;
         private byte CRB = 0x20;
